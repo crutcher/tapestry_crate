@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/zspace.iml" filepath="$PROJECT_DIR$/zspace.iml" />
+      <module fileurl="file://$PROJECT_DIR$/tapestry.iml" filepath="$PROJECT_DIR$/tapestry.iml" />
     </modules>
   </component>
 </project>
