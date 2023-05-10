@@ -570,9 +570,14 @@ impl ZRange {
         }
     }
 
-    pub fn from_start_with_shape(start: &ZPoint, shape: &ZPoint) -> Self {
-        let end = start + shape;
-        ZRange::between(start, &end)
+    pub fn translate(&self, offset: impl ZPointSource) -> Self {
+        let offset = offset.zpoint();
+        assert_equal_ndim!(self.start, offset, translate, ..);
+        ZRange::between(&self.start + &offset, &self.end + &offset)
+    }
+
+    pub fn from_start_with_shape(start: impl ZPointSource, shape: impl ZPointSource) -> Self {
+        ZRange::from_shape(shape).translate(start)
     }
 
     pub fn shape(&self) -> ZPoint {
@@ -619,6 +624,17 @@ mod zrange_tests {
         let range = ZRange::between(&start, &end);
         assert_eq!(range.start, start);
         assert_eq!(range.end, end);
+    }
+
+    #[test]
+    fn test_translate() {
+        let start = ZPoint::from(vec![1, 2, 3]);
+        let end = ZPoint::from(vec![4, 5, 6]);
+        let range = ZRange::between(&start, &end);
+        let offset = ZPoint::from(vec![1, 2, 3]);
+        let translated = range.translate(&offset);
+        assert_eq!(translated.start, &start + &offset);
+        assert_eq!(translated.end, &end + &offset);
     }
 
     #[test]
