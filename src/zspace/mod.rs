@@ -1,10 +1,11 @@
 //! Z-space is a vector space with a basis of vectors with integer coordinates.
 
 use ops::{Add, Div, Mul, Rem, Sub};
+use std::cmp::Ordering;
 use std::fmt;
 use std::ops;
 
-use ndarray;
+use ndarray::{array, Array1, Axis, stack};
 
 /// A trait for types that have a dimensionality.
 pub trait ZDim {
@@ -12,7 +13,7 @@ pub trait ZDim {
     fn ndim(&self) -> usize;
 }
 
-impl ZDim for ndarray::Array<i32, ndarray::Ix1> {
+impl ZDim for Array1<i32> {
     /// Get the number of dimensions of the array.
     fn ndim(&self) -> usize {
         self.shape()[0]
@@ -25,14 +26,13 @@ impl ZDim for Vec<i32> {
         self.len()
     }
 }
-
 #[cfg(test)]
 mod zdim_tests {
     use super::*;
 
     #[test]
     fn test_ndim() {
-        let a: ndarray::Array1<i32> = ndarray::Array1::from_vec(vec![1, 2, 3]);
+        let a: Array1<i32> = Array1::from_vec(vec![1, 2, 3]);
         assert_eq!(ZDim::ndim(&a), 3);
         assert_eq!(a[0], 1);
 
@@ -42,6 +42,7 @@ mod zdim_tests {
     }
 }
 
+#[macro_export]
 macro_rules! assert_same_zdim {
     // The `tt` (token tree) designator is used for
     // operators and tokens.
@@ -58,15 +59,43 @@ macro_rules! assert_same_zdim {
 }
 
 /// A ZPoint is an immutable point in Z-space.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ZPoint {
-    pub coords: ndarray::Array1<i32>,
+    pub coords: Array1<i32>,
 }
 
-impl fmt::Display for ZPoint {
+#[macro_export]
+macro_rules! zpoint {
+    () => (
+        ZPoint::zeros(0)
+    );
+
+
+    ($($x:expr),+ $(,)?) => (
+        ZPoint { coords: array![$($x),+] }
+    );
+}
+
+#[cfg(test)]
+mod test_zpoint_macro {
+    use super::*;
+
+    #[test]
+    fn test_macro() {
+        assert_eq!(zpoint![], ZPoint::zeros(0));
+        assert_eq!(zpoint![2, -3], ZPoint::from(vec![2, -3]));
+    }
+}
+
+impl fmt::Debug for ZPoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let elements: Vec<String> = self.coords.iter().map(|x| x.to_string()).collect();
-        write!(f, "Z[{}]", elements.join(", "))
+        write!(f, "z[{}]", elements.join(", "))
+    }
+}
+impl fmt::Display for ZPoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
     }
 }
 
@@ -76,12 +105,10 @@ mod test_zpoint_display {
 
     #[test]
     fn test_display() {
-        let a = ZPoint::from(vec![1, 2, 3]);
-        assert_eq!(format!("{}", a), "Z[1, 2, 3]");
+        let a = zpoint![1, 2, 3];
+        assert_eq!(format!("{}", a), "z[1, 2, 3]");
     }
 }
-
-use std::cmp::Ordering;
 
 impl PartialOrd for ZPoint {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -112,11 +139,23 @@ impl PartialEq for ZPoint {
         self.coords.iter().eq(other.coords.iter())
     }
 }
+
 impl Eq for ZPoint {}
 
 #[cfg(test)]
 mod test_zpoint_ordering {
     use super::*;
+
+    #[test]
+    fn test_scalar_ordering() {
+        let scalar = zpoint![];
+        assert_eq!(scalar < scalar, false);
+        assert_eq!(scalar <= scalar, true);
+        assert_eq!(scalar > scalar, false);
+        assert_eq!(scalar >= scalar, true);
+        assert_eq!(scalar == scalar, true);
+        assert_eq!(scalar != scalar, false);
+    }
 
     #[test]
     fn test_partial() {
@@ -128,7 +167,7 @@ mod test_zpoint_ordering {
         assert_eq!(z == z, true);
         assert_eq!(z != z, false);
 
-        let a = ZPoint::from(vec![1, 2, 3]);
+        let a = zpoint![1, 2, 3];
         assert_eq!(z < a, true);
         assert_eq!(z <= a, true);
         assert_eq!(z > a, false);
@@ -136,7 +175,7 @@ mod test_zpoint_ordering {
         assert_eq!(z != a, true);
         assert_eq!(z == a, false);
 
-        let b = ZPoint::from(vec![1, 1, 4]);
+        let b = zpoint![1, 1, 4];
         assert_eq!(a < b, false);
         assert_eq!(a <= b, false);
         assert_eq!(a > b, false);
@@ -152,6 +191,33 @@ impl ZDim for ZPoint {
         self.coords.len()
     }
 }
+
+
+impl From<Array1<i32>> for ZPoint {
+    fn from(item: Array1<i32>) -> Self {
+        ZPoint {
+            coords: item
+        }
+    }
+}
+
+impl From<&Array1<i32>> for ZPoint {
+    fn from(item: &Array1<i32>) -> Self {
+        item.clone().into()
+    }
+}
+
+impl From<Vec<i32>> for ZPoint {
+    fn from(item: Vec<i32>) -> Self {
+        Array1::from_vec(item).into()
+    }
+}
+impl From<&Vec<i32>> for ZPoint {
+    fn from(item: &Vec<i32>) -> Self {
+        Array1::from_vec(item.clone()).into()
+    }
+}
+
 
 /// A trait for types that can be converted to a ZPoint.
 pub trait ZPointSource {
@@ -171,13 +237,13 @@ impl ZPointSource for &ZPoint {
     }
 }
 
-impl ZPointSource for ndarray::Array1<i32> {
+impl ZPointSource for Array1<i32> {
     fn new_zpoint(self) -> ZPoint {
         ZPoint { coords: self }
     }
 }
 
-impl ZPointSource for &ndarray::Array1<i32> {
+impl ZPointSource for &Array1<i32> {
     fn new_zpoint(self) -> ZPoint {
         ZPoint {
             coords: self.clone(),
@@ -188,7 +254,7 @@ impl ZPointSource for &ndarray::Array1<i32> {
 impl ZPointSource for Vec<i32> {
     fn new_zpoint(self) -> ZPoint {
         ZPoint {
-            coords: ndarray::Array1::from_vec(self),
+            coords: Array1::from_vec(self),
         }
     }
 }
@@ -196,7 +262,7 @@ impl ZPointSource for Vec<i32> {
 impl ZPointSource for &Vec<i32> {
     fn new_zpoint(self) -> ZPoint {
         ZPoint {
-            coords: ndarray::Array1::from_vec(self.clone()),
+            coords: Array1::from_vec(self.clone()),
         }
     }
 }
@@ -220,6 +286,10 @@ impl ops::Index<usize> for ZPoint {
 /// A point in Z-space.
 /// Z-space is a vector space with a basis of vectors with integer coordinates.
 impl ZPoint {
+    pub fn scalar() -> Self {
+        ZPoint { coords: array![] }
+    }
+
     /// Create a new ZPoint from a ZPointSource.
     pub fn from(source: impl ZPointSource) -> Self {
         source.new_zpoint()
@@ -231,8 +301,14 @@ mod test_from {
     use super::*;
 
     #[test]
+    fn test_scalar() {
+        let p = ZPoint::scalar();
+        assert_eq!(p.coords, array![]);
+    }
+
+    #[test]
     fn test_from_vec() {
-        let expected = ndarray::Array1::from_vec(vec![1, 2, 3]);
+        let expected = array![1, 2, 3];
 
         // move Vec<i32>
         assert_eq!(ZPoint::from(vec![1, 2, 3]).coords, &expected);
@@ -243,17 +319,17 @@ mod test_from {
 
     #[test]
     fn test_from_ndarray() {
-        let expected = ndarray::Array1::from_vec(vec![1, 2, 3]);
+        let expected = array![1, 2, 3];
 
         // move Vec<i32>
         assert_eq!(
-            ZPoint::from(ndarray::Array1::from_vec(vec![1, 2, 3])).coords,
+            ZPoint::from(Array1::from_vec(vec![1, 2, 3])).coords,
             &expected
         );
 
         // borrow Vec<i32>
         assert_eq!(
-            ZPoint::from(&ndarray::Array1::from_vec(vec![1, 2, 3])).coords,
+            ZPoint::from(&Array1::from_vec(vec![1, 2, 3])).coords,
             &expected
         );
     }
@@ -263,7 +339,7 @@ impl ZPoint {
     /// Create a new ZPoint of zeros with the given dimensionality.
     pub fn zeros(ndim: usize) -> Self {
         ZPoint {
-            coords: ndarray::Array1::zeros(ndim),
+            coords: Array1::zeros(ndim),
         }
     }
 
@@ -275,7 +351,7 @@ impl ZPoint {
     /// Create a new ZPoint of ones with the given dimensionality.
     pub fn ones(ndim: usize) -> Self {
         ZPoint {
-            coords: ndarray::Array1::ones(ndim),
+            coords: Array1::ones(ndim),
         }
     }
 
@@ -287,7 +363,7 @@ impl ZPoint {
     /// Create a new ZPoint with the given dimensionality and value.
     pub fn full(ndim: usize, value: i32) -> Self {
         ZPoint {
-            coords: ndarray::Array1::from_elem(ndim, value),
+            coords: Array1::from_elem(ndim, value),
         }
     }
 
@@ -341,13 +417,13 @@ macro_rules! binop (
             }
         }
 
-        impl $trt<&ndarray::Array1<i32>> for &ZPoint {
+        impl $trt<&Array1<i32>> for &ZPoint {
             type Output = ZPoint;
-            fn $mth(self, other: &ndarray::Array1<i32>) -> Self::Output {
+            fn $mth(self, other: &Array1<i32>) -> Self::Output {
                 self $op &ZPoint::from(other.clone())
             }
         }
-        impl $trt<&ZPoint> for &ndarray::Array1<i32> {
+        impl $trt<&ZPoint> for &Array1<i32> {
             type Output = ZPoint;
             fn $mth(self, other: &ZPoint) -> Self::Output {
                 &ZPoint::from(self.clone()) $op other
@@ -391,7 +467,7 @@ mod zpoint_tests {
 
     #[test]
     fn test_clone() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
+        let point1 = zpoint![1, 2, 3];
         let point2 = point1.clone();
         assert_eq!(point1, point2);
     }
@@ -400,50 +476,50 @@ mod zpoint_tests {
     fn test_zeros() {
         let point = ZPoint::zeros(3);
         assert_eq!(point.ndim(), 3);
-        assert_eq!(point, ZPoint::from(vec![0, 0, 0]));
+        assert_eq!(point, zpoint![0, 0, 0]);
     }
 
     #[test]
     fn test_zeros_like() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
+        let point1 = zpoint![1, 2, 3];
         let point2 = ZPoint::zeros_like(&point1);
         assert_eq!(point2.ndim(), 3);
-        assert_eq!(point2, ZPoint::from(vec![0, 0, 0]));
+        assert_eq!(point2, zpoint![0, 0, 0]);
     }
 
     #[test]
     fn test_ones() {
         let point = ZPoint::ones(3);
         assert_eq!(point.ndim(), 3);
-        assert_eq!(point, ZPoint::from(vec![1, 1, 1]));
+        assert_eq!(point, zpoint![1, 1, 1]);
     }
 
     #[test]
     fn test_ones_like() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
+        let point1 = zpoint![1, 2, 3];
         let point2 = ZPoint::ones_like(&point1);
         assert_eq!(point2.ndim(), 3);
-        assert_eq!(point2, ZPoint::from(vec![1, 1, 1]));
+        assert_eq!(point2, zpoint![1, 1, 1]);
     }
 
     #[test]
     fn test_full() {
         let point = ZPoint::full(3, 5);
         assert_eq!(point.ndim(), 3);
-        assert_eq!(point, ZPoint::from(vec![5, 5, 5]));
+        assert_eq!(point, zpoint![5, 5, 5]);
     }
 
     #[test]
     fn test_full_like() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
+        let point1 = zpoint![1, 2, 3];
         let point2 = ZPoint::full_like(&point1, 5);
         assert_eq!(point2.ndim(), 3);
-        assert_eq!(point2, ZPoint::from(vec![5, 5, 5]));
+        assert_eq!(point2, zpoint![5, 5, 5]);
     }
 
     #[test]
     fn test_from_vec() {
-        let point = ZPoint::from(vec![1, 2, 3]);
+        let point = zpoint![1, 2, 3];
         assert_eq!(point.ndim(), 3);
         assert_eq!(point[0], 1);
         assert_eq!(point[1], 2);
@@ -452,7 +528,7 @@ mod zpoint_tests {
 
     #[test]
     fn test_from_ndarray() {
-        let point = ZPoint::from(ndarray::array![1, 2, 3]);
+        let point = ZPoint::from(array![1, 2, 3]);
         assert_eq!(point.ndim(), 3);
         assert_eq!(point[0], 1);
         assert_eq!(point[1], 2);
@@ -461,145 +537,115 @@ mod zpoint_tests {
 
     #[test]
     fn test_add() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
-        let point2 = ZPoint::from(vec![4, 5, 6]);
-        assert_eq!((&point1 + &point2), ZPoint::from(vec![5, 7, 9]));
+        let point1 = zpoint![1, 2, 3];
+        let point2 = zpoint![4, 5, 6];
+        assert_eq!((&point1 + &point2), zpoint![5, 7, 9]);
 
         // scalars
-        assert_eq!(&point1 + 1, ZPoint::from(vec![2, 3, 4]));
-        assert_eq!(1 + &point1, ZPoint::from(vec![2, 3, 4]));
+        assert_eq!(&point1 + 1, zpoint![2, 3, 4]);
+        assert_eq!(1 + &point1, zpoint![2, 3, 4]);
 
         // ndarrays
-        assert_eq!(
-            &point1 + &ndarray::array![1, 2, 3],
-            ZPoint::from(vec![2, 4, 6])
-        );
-        assert_eq!(
-            &ndarray::array![1, 2, 3] + &point1,
-            ZPoint::from(vec![2, 4, 6])
-        );
+        assert_eq!(&point1 + &array![1, 2, 3], zpoint![2, 4, 6]);
+        assert_eq!(&array![1, 2, 3] + &point1, zpoint![2, 4, 6]);
 
         // vec
-        assert_eq!(&point1 + &vec![1, 2, 3], ZPoint::from(vec![2, 4, 6]));
-        assert_eq!(&vec![1, 2, 3] + &point1, ZPoint::from(vec![2, 4, 6]));
+        assert_eq!(&point1 + &vec![1, 2, 3], zpoint![2, 4, 6]);
+        assert_eq!(&vec![1, 2, 3] + &point1, zpoint![2, 4, 6]);
     }
 
     #[test]
     fn test_sub() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
-        let point2 = ZPoint::from(vec![4, 5, 6]);
-        assert_eq!((&point1 - &point2), ZPoint::from(vec![-3, -3, -3]));
+        let point1 = zpoint![1, 2, 3];
+        let point2 = zpoint![4, 5, 6];
+        assert_eq!((&point1 - &point2), zpoint![-3, -3, -3]);
 
         // scalars
-        assert_eq!(&point1 - 1, ZPoint::from(vec![0, 1, 2]));
-        assert_eq!(1 - &point1, ZPoint::from(vec![0, -1, -2]));
+        assert_eq!(&point1 - 1, zpoint![0, 1, 2]);
+        assert_eq!(1 - &point1, zpoint![0, -1, -2]);
 
         // ndarrays
-        assert_eq!(
-            &point1 - &ndarray::array![1, 2, 3],
-            ZPoint::from(vec![0, 0, 0])
-        );
-        assert_eq!(
-            &ndarray::array![1, 2, 3] - &point1,
-            ZPoint::from(vec![0, 0, 0])
-        );
+        assert_eq!(&point1 - &array![1, 2, 3], zpoint![0, 0, 0]);
+        assert_eq!(&array![1, 2, 3] - &point1, zpoint![0, 0, 0]);
 
         // vec
-        assert_eq!(&point1 - &vec![1, 2, 3], ZPoint::from(vec![0, 0, 0]));
-        assert_eq!(&vec![1, 2, 3] - &point1, ZPoint::from(vec![0, 0, 0]));
+        assert_eq!(&point1 - &vec![1, 2, 3], zpoint![0, 0, 0]);
+        assert_eq!(&vec![1, 2, 3] - &point1, zpoint![0, 0, 0]);
     }
 
     #[test]
     fn test_mul() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
-        let point2 = ZPoint::from(vec![4, 5, 6]);
-        assert_eq!((&point1 * &point2), ZPoint::from(vec![4, 10, 18]));
+        let point1 = zpoint![1, 2, 3];
+        let point2 = zpoint![4, 5, 6];
+        assert_eq!((&point1 * &point2), zpoint![4, 10, 18]);
 
         // scalars
-        assert_eq!(&point1 * 2, ZPoint::from(vec![2, 4, 6]));
-        assert_eq!(2 * &point1, ZPoint::from(vec![2, 4, 6]));
+        assert_eq!(&point1 * 2, zpoint![2, 4, 6]);
+        assert_eq!(2 * &point1, zpoint![2, 4, 6]);
 
         // ndarrays
-        assert_eq!(
-            &point1 * &ndarray::array![1, 2, 3],
-            ZPoint::from(vec![1, 4, 9])
-        );
-        assert_eq!(
-            &ndarray::array![1, 2, 3] * &point1,
-            ZPoint::from(vec![1, 4, 9])
-        );
+        assert_eq!(&point1 * &array![1, 2, 3], zpoint![1, 4, 9]);
+        assert_eq!(&array![1, 2, 3] * &point1, zpoint![1, 4, 9]);
 
         // vec
-        assert_eq!(&point1 * &vec![1, 2, 3], ZPoint::from(vec![1, 4, 9]));
-        assert_eq!(&vec![1, 2, 3] * &point1, ZPoint::from(vec![1, 4, 9]));
+        assert_eq!(&point1 * &vec![1, 2, 3], zpoint![1, 4, 9]);
+        assert_eq!(&vec![1, 2, 3] * &point1, zpoint![1, 4, 9]);
     }
 
     #[test]
     fn test_div() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
-        let point2 = ZPoint::from(vec![4, 5, 6]);
-        assert_eq!((&point1 / &point2), ZPoint::from(vec![0, 0, 0]));
+        let point1 = zpoint![1, 2, 3];
+        let point2 = zpoint![4, 5, 6];
+        assert_eq!((&point1 / &point2), zpoint![0, 0, 0]);
 
         // scalars
-        assert_eq!(&point1 / 2, ZPoint::from(vec![0, 1, 1]));
-        assert_eq!(2 / &point1, ZPoint::from(vec![2, 1, 0]));
+        assert_eq!(&point1 / 2, zpoint![0, 1, 1]);
+        assert_eq!(2 / &point1, zpoint![2, 1, 0]);
 
         // ndarrays
-        assert_eq!(
-            &point1 / &ndarray::array![1, 2, 3],
-            ZPoint::from(vec![1, 1, 1])
-        );
-        assert_eq!(
-            &ndarray::array![1, 2, 3] / &point1,
-            ZPoint::from(vec![1, 1, 1])
-        );
+        assert_eq!(&point1 / &array![1, 2, 3], zpoint![1, 1, 1]);
+        assert_eq!(&array![1, 2, 3] / &point1, zpoint![1, 1, 1]);
 
         // vec
-        assert_eq!(&point1 / &vec![1, 2, 3], ZPoint::from(vec![1, 1, 1]));
-        assert_eq!(&vec![1, 2, 3] / &point1, ZPoint::from(vec![1, 1, 1]));
+        assert_eq!(&point1 / &vec![1, 2, 3], zpoint![1, 1, 1]);
+        assert_eq!(&vec![1, 2, 3] / &point1, zpoint![1, 1, 1]);
     }
 
     #[test]
     fn test_rem() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
-        let point2 = ZPoint::from(vec![4, 5, 6]);
-        assert_eq!((&point1 % &point2), ZPoint::from(vec![1, 2, 3]));
+        let point1 = zpoint![1, 2, 3];
+        let point2 = zpoint![4, 5, 6];
+        assert_eq!((&point1 % &point2), zpoint![1, 2, 3]);
 
         // scalars
-        assert_eq!(&point1 % 2, ZPoint::from(vec![1, 0, 1]));
-        assert_eq!(2 % &point1, ZPoint::from(vec![0, 0, 2]));
+        assert_eq!(&point1 % 2, zpoint![1, 0, 1]);
+        assert_eq!(2 % &point1, zpoint![0, 0, 2]);
 
         // ndarrays
-        assert_eq!(
-            &point1 % &ndarray::array![1, 2, 3],
-            ZPoint::from(vec![0, 0, 0])
-        );
-        assert_eq!(
-            &ndarray::array![1, 2, 3] % &point1,
-            ZPoint::from(vec![0, 0, 0])
-        );
+        assert_eq!(&point1 % &array![1, 2, 3], zpoint![0, 0, 0]);
+        assert_eq!(&array![1, 2, 3] % &point1, zpoint![0, 0, 0]);
 
         // vec
-        assert_eq!(&point1 % &vec![1, 2, 3], ZPoint::from(vec![0, 0, 0]));
-        assert_eq!(&vec![1, 2, 3] % &point1, ZPoint::from(vec![0, 0, 0]));
+        assert_eq!(&point1 % &vec![1, 2, 3], zpoint![0, 0, 0]);
+        assert_eq!(&vec![1, 2, 3] % &point1, zpoint![0, 0, 0]);
     }
 
     #[test]
     fn test_neg() {
-        let point1 = ZPoint::from(vec![1, 2, 3]);
+        let point1 = zpoint![1, 2, 3];
         let point2 = -&point1;
-        assert_eq!(point2, ZPoint::from(vec![-1, -2, -3]));
+        assert_eq!(point2, zpoint![-1, -2, -3]);
     }
 }
 
 /// A ZRange is a rectangular prism in ZSpace, defined over `[start, end)`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ZRange {
     start: ZPoint,
     end: ZPoint,
 }
 
-impl fmt::Display for ZRange {
+impl fmt::Debug for ZRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pairs: Vec<String> = self
             .start
@@ -609,7 +655,13 @@ impl fmt::Display for ZRange {
             .map(|(a, b)| format!("{}:{}", a, b))
             .collect();
 
-        write!(f, "ZR[{}]", pairs.join(", "))
+        write!(f, "zr[{}]", pairs.join(", "))
+    }
+}
+
+impl fmt::Display for ZRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
     }
 }
 
@@ -619,12 +671,19 @@ mod test_zrange_display {
 
     #[test]
     fn test_display() {
-        let range = ZRange::between(&ZPoint::from(vec![1, 2, 3]), &ZPoint::from(vec![4, 5, 6]));
-        assert_eq!(format!("{}", range), "ZR[1:4, 2:5, 3:6]");
+        let range = ZRange::between(&zpoint![1, 2, 3], &zpoint![4, 5, 6]);
+        assert_eq!(format!("{}", range), "zr[1:4, 2:5, 3:6]");
     }
 }
 
 impl ZDim for ZRange {
+    /// Get the number of dimensions of the ZRange
+    fn ndim(&self) -> usize {
+        return self.start.ndim();
+    }
+}
+
+impl ZDim for &ZRange {
     /// Get the number of dimensions of the ZRange
     fn ndim(&self) -> usize {
         return self.start.ndim();
@@ -666,12 +725,23 @@ impl ZRange {
         ZRange::between(&self.start + &offset, &self.end + &offset)
     }
 
+    /// The shape of the range.
+    /// Will be a non-negative ZPoint.
     pub fn shape(&self) -> ZPoint {
         return &self.end - &self.start;
     }
 
+    /// The number of elements in the ZRange.
     pub fn size(&self) -> usize {
         self.shape().coords.product() as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.size() == 0
+    }
+
+    pub fn is_not_empty(&self) -> bool {
+        self.size() != 0
     }
 }
 
@@ -681,32 +751,32 @@ mod zrange_tests {
 
     #[test]
     fn test_from_zpoint_shape() {
-        let shape = ZPoint::from(vec![1, 2, 3]);
+        let shape = zpoint![1, 2, 3];
         let range = ZRange::from_shape(&shape);
-        assert_eq!(range.start, ZPoint::from(vec![0, 0, 0]));
+        assert_eq!(range.start, zpoint![0, 0, 0]);
         assert_eq!(range.end, shape);
     }
 
     #[test]
     fn test_from_vec_shape() {
-        let shape = ZPoint::from(vec![1, 2, 3]);
+        let shape = zpoint![1, 2, 3];
         let range = ZRange::from_shape(vec![1, 2, 3]);
-        assert_eq!(range.start, ZPoint::from(vec![0, 0, 0]));
+        assert_eq!(range.start, zpoint![0, 0, 0]);
         assert_eq!(range.end, shape);
     }
 
     #[test]
     fn test_from_ndarray_shape() {
-        let shape = ZPoint::from(vec![1, 2, 3]);
-        let range = ZRange::from_shape(ndarray::array![1, 2, 3]);
-        assert_eq!(range.start, ZPoint::from(vec![0, 0, 0]));
+        let shape = zpoint![1, 2, 3];
+        let range = ZRange::from_shape(array![1, 2, 3]);
+        assert_eq!(range.start, zpoint![0, 0, 0]);
         assert_eq!(range.end, shape);
     }
 
     #[test]
     fn test_between() {
-        let start = ZPoint::from(vec![1, 2, 3]);
-        let end = ZPoint::from(vec![4, 5, 6]);
+        let start = zpoint![1, 2, 3];
+        let end = zpoint![4, 5, 6];
         let range = ZRange::between(&start, &end);
         assert_eq!(range.start, start);
         assert_eq!(range.end, end);
@@ -714,10 +784,10 @@ mod zrange_tests {
 
     #[test]
     fn test_translate() {
-        let start = ZPoint::from(vec![1, 2, 3]);
-        let end = ZPoint::from(vec![4, 5, 6]);
+        let start = zpoint![1, 2, 3];
+        let end = zpoint![4, 5, 6];
         let range = ZRange::between(&start, &end);
-        let offset = ZPoint::from(vec![1, 2, 3]);
+        let offset = zpoint![1, 2, 3];
         let translated = range.translate(&offset);
         assert_eq!(translated.start, &start + &offset);
         assert_eq!(translated.end, &end + &offset);
@@ -731,38 +801,54 @@ mod zrange_tests {
 
     #[test]
     fn test_ndim() {
-        let start = ZPoint::from(vec![1, 2, 3]);
-        let end = ZPoint::from(vec![4, 5, 6]);
+        let start = zpoint![1, 2, 3];
+        let end = zpoint![4, 5, 6];
         let range = ZRange::between(&start, &end);
         assert_eq!(range.ndim(), 3);
     }
 
     #[test]
     fn test_shape_size() {
-        let start = ZPoint::from(vec![1, 2, 3]);
-        let end = ZPoint::from(vec![4, 5, 6]);
+        let start = zpoint![1, 2, 3];
+        let end = zpoint![4, 5, 6];
         let range = ZRange::between(&start, &end);
-        assert_eq!(range.shape(), ZPoint::from(vec![3, 3, 3]));
+        assert_eq!(range.shape(), zpoint![3, 3, 3]);
         assert_eq!(range.size(), 27);
     }
 }
 
 impl ZRange {
+    pub fn dim_iter(&self) -> impl Iterator<Item = (&i32, &i32)> {
+        self.start.coords.iter().zip(self.end.coords.iter())
+    }
+
     pub fn contains(&self, point: impl ZPointSource) -> bool {
         let point = point.new_zpoint();
         assert_same_zdim!(self.start, point, contains, ..);
-        self.start
-            .coords
-            .iter()
+
+        self.dim_iter()
             .zip(point.coords.iter())
-            .all(|(s, p)| s <= p)
-            && self
-                .end
-                .coords
-                .iter()
-                .zip(point.coords.iter())
-                .all(|(e, p)| e > p)
+            .all(|((s, e), p)| s <= p && p <= e)
     }
+
+    pub fn contains_range(&self, other: &ZRange) -> bool {
+        self.contains(&other.start) && self.contains(&other.end - 1)
+    }
+}
+
+#[macro_export]
+macro_rules! assert_contains {
+    ($zr:expr, $x:expr) => {
+        assert_same_zdim!($zr, $x, contains, ..);
+        assert!(
+            $zr.contains($x),
+            "{:?}: {:?} does not contain {:?}: {:?}",
+            stringify!($zr),
+            $zr,
+            stringify!($x),
+            $x,
+        );
+    };
 }
 
 #[cfg(test)]
@@ -771,10 +857,151 @@ mod test_contains {
 
     #[test]
     fn test_contains() {
-        let range = ZRange::between(&ZPoint::from(vec![1, 2, 3]), &ZPoint::from(vec![4, 5, 6]));
-        assert!(range.contains(&ZPoint::from(vec![2, 3, 4])));
-        assert!(!range.contains(&ZPoint::from(vec![0, 3, 4])));
-        assert!(!range.contains(&ZPoint::from(vec![2, 6, 4])));
-        assert!(!range.contains(&ZPoint::from(vec![2, 3, 7])));
+        let range = ZRange::between(&zpoint![1, 2, 3], &zpoint![4, 5, 6]);
+        assert!(range.contains(&zpoint![2, 3, 4]));
+        assert!(!range.contains(&zpoint![0, 3, 4]));
+        assert!(!range.contains(&zpoint![2, 6, 4]));
+        assert!(!range.contains(&zpoint![2, 3, 7]));
+    }
+
+    #[test]
+    fn test_contains_range() {
+        let range = ZRange::between(&zpoint![1, 2, 3], &zpoint![4, 5, 6]);
+        assert!(range.contains_range(&ZRange::between(&zpoint![1, 3, 5], &zpoint![2, 4, 5],),))
+    }
+}
+
+#[cfg(test)]
+mod test_scalar_range {
+    use super::*;
+
+    #[test]
+    fn test_scalar() {
+        let scalar_point = zpoint![];
+
+        let range = ZRange::from_shape(&scalar_point);
+
+        assert_eq!(range.size(), 1);
+        assert!(range.contains(&scalar_point));
+    }
+}
+
+impl ZRange {
+    /// Split the ZRange at `pivot`.
+    ///
+    /// For a ZRange with at least 2 steps along each dimension,
+    /// this can produce up to `2^ndim` children:
+    ///  - `.split_trivial(pivot)` will yield all of these children including duplicate and empty children;
+    ///  - `.split(pivot)` will yield only the non-empty distinct children.
+    pub fn split_trivial(&self, pivot: impl ZPointSource) -> Vec<ZRange> {
+        let pivot = pivot.new_zpoint();
+        assert_contains!(self, &pivot);
+        assert!(pivot >= self.start);
+        assert!(pivot <= self.end);
+
+        let mut children = vec![self.clone()];
+        for (dim, p) in pivot.coords.iter().enumerate() {
+            let mut new_children = Vec::new();
+            for child in children {
+                let mut left = child.clone();
+                let mut right = child.clone();
+                left.end.coords[dim] = *p;
+                right.start.coords[dim] = *p;
+                new_children.push(left);
+                new_children.push(right);
+            }
+            children = new_children;
+        }
+        children
+    }
+
+    pub fn split(&self, pivot: impl ZPointSource) -> Vec<ZRange> {
+        self.split_trivial(pivot)
+            .iter()
+            .filter(|child| child.is_not_empty())
+            .map(|child| child.clone())
+            .collect()
+    }
+
+    pub fn join(&self, other: &ZRange) -> Option<ZRange> {
+        // Two ZRanges can be joined iff they are adjacent along a single dimension.
+        // In this case, the joined ZRange will be the smallest ZRange that contains both.
+        // Otherwise, return None.
+        assert_eq!(self.ndim(), other.ndim());
+
+        let start = stack![Axis(0), self.start.coords, other.start.coords]
+            .map_axis(ndarray::Axis(0), |row| *row.iter().min().unwrap());
+
+        let end = stack![Axis(0), self.end.coords, other.end.coords]
+            .map_axis(ndarray::Axis(0), |row| *row.iter().max().unwrap());
+
+        let range = ZRange::between(start, end);
+
+        if range.size() != self.size() + other.size() {
+            return None;
+        }
+
+        Some(range)
+    }
+}
+
+#[cfg(test)]
+mod test_split {
+    use super::*;
+
+    #[test]
+    fn test_join() {
+        let range = ZRange::between(&zpoint![2, 3], &zpoint![4, 5]);
+        let parts = range.split(&zpoint![2, 4]);
+
+        assert_eq!(
+            parts,
+            vec![
+                ZRange::between(zpoint![2, 3], zpoint![4, 4]),
+                ZRange::between(zpoint![2, 4], zpoint![4, 5]),
+            ]
+        );
+
+        assert_eq!(parts[0].join(&parts[1]), Some(range));
+    }
+
+    #[test]
+    fn test_split_trivial() {
+        let range = ZRange::between(&zpoint![1, 2, 3], &zpoint![4, 5, 6]);
+        assert_eq!(
+            range.split_trivial(&zpoint![2, 3, 4]),
+            vec![
+                ZRange::between(zpoint![1, 2, 3], zpoint![2, 3, 4]),
+                ZRange::between(zpoint![1, 2, 4], zpoint![2, 3, 6]),
+                ZRange::between(zpoint![1, 3, 3], zpoint![2, 5, 4]),
+                ZRange::between(zpoint![1, 3, 4], zpoint![2, 5, 6]),
+                ZRange::between(zpoint![2, 2, 3], zpoint![4, 3, 4]),
+                ZRange::between(zpoint![2, 2, 4], zpoint![4, 3, 6]),
+                ZRange::between(zpoint![2, 3, 3], zpoint![4, 5, 4]),
+                ZRange::between(zpoint![2, 3, 4], zpoint![4, 5, 6]),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_split_trivial_empty() {
+        let range = ZRange::between(&zpoint![1, 2], &zpoint![4, 5]);
+        assert_eq!(
+            range.split_trivial(&zpoint![2, 5]),
+            vec![
+                ZRange::between(zpoint![1, 2], zpoint![2, 5]),
+                ZRange::between(zpoint![1, 5], zpoint![2, 5]),
+                ZRange::between(zpoint![2, 2], zpoint![4, 5]),
+                ZRange::between(zpoint![2, 5], zpoint![4, 5]),
+            ]
+        );
+
+        assert_eq!(
+            range.split(&zpoint![2, 5]),
+            vec![
+                ZRange::between(zpoint![1, 2], zpoint![2, 5]),
+                ZRange::between(zpoint![2, 2], zpoint![4, 5]),
+            ]
+        );
     }
 }
