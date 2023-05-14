@@ -88,13 +88,19 @@ mod test_zpoint_macro {
 }
 
 impl fmt::Debug for ZPoint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         let elements: Vec<String> = self.coords.iter().map(|x| x.to_string()).collect();
         write!(f, "z[{}]", elements.join(", "))
     }
 }
 impl fmt::Display for ZPoint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         fmt::Debug::fmt(self, f)
     }
 }
@@ -111,7 +117,10 @@ mod test_zpoint_display {
 }
 
 impl PartialOrd for ZPoint {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(
+        &self,
+        other: &Self,
+    ) -> Option<Ordering> {
         assert_same_zdim!(self, other, partial_cmp, <);
         if self.ndim() == 0 {
             return Some(Ordering::Equal);
@@ -134,7 +143,10 @@ impl PartialOrd for ZPoint {
 }
 
 impl PartialEq for ZPoint {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(
+        &self,
+        other: &Self,
+    ) -> bool {
         assert_same_zdim!(self, other, eq, ==);
         self.coords.iter().eq(other.coords.iter())
     }
@@ -192,12 +204,9 @@ impl ZDim for ZPoint {
     }
 }
 
-
 impl From<Array1<i32>> for ZPoint {
     fn from(item: Array1<i32>) -> Self {
-        ZPoint {
-            coords: item
-        }
+        ZPoint { coords: item }
     }
 }
 
@@ -217,7 +226,6 @@ impl From<&Vec<i32>> for ZPoint {
         Array1::from_vec(item.clone()).into()
     }
 }
-
 
 /// A trait for types that can be converted to a ZPoint.
 pub trait ZPointSource {
@@ -278,7 +286,10 @@ impl ops::Index<usize> for ZPoint {
     type Output = i32;
 
     /// Index operator for ZPoint.
-    fn index(&self, index: usize) -> &Self::Output {
+    fn index(
+        &self,
+        index: usize,
+    ) -> &Self::Output {
         &self.coords[index]
     }
 }
@@ -361,14 +372,20 @@ impl ZPoint {
     }
 
     /// Create a new ZPoint with the given dimensionality and value.
-    pub fn full(ndim: usize, value: i32) -> Self {
+    pub fn full(
+        ndim: usize,
+        value: i32,
+    ) -> Self {
         ZPoint {
             coords: Array1::from_elem(ndim, value),
         }
     }
 
     /// Create a new ZPoint with the same dimensionality as the given ZPoint and value.
-    pub fn full_like(other: &ZPoint, value: i32) -> Self {
+    pub fn full_like(
+        other: &ZPoint,
+        value: i32,
+    ) -> Self {
         ZPoint::full(other.ndim(), value)
     }
 }
@@ -391,11 +408,23 @@ uniop!(Neg, -, neg);
 
 macro_rules! binop (
     ($trt:ident, $op:tt, $mth:ident) => (
-        // Implementation of binary operator `op` for `ZPoint`;
-        // covering the cases `ZPoint op ZPoint`, `&ZPoint op ZPoint`, `ZPoint op &ZPoint`:
-        impl $trt<&ZPoint> for &ZPoint {
+                // Implementation for `ZPoint op ZPoint`:
+        impl $trt for ZPoint {
             type Output = ZPoint;
-            fn $mth(self, other: &ZPoint) -> Self::Output {
+
+            fn $mth(self, other: ZPoint) -> Self::Output {
+                assert_same_zdim!(self, other, $mth, $op);
+                ZPoint {
+                    coords: self.coords $op other.coords,
+                }
+            }
+        }
+
+        // Implementations for `&ZPoint op ZPoint`, `ZPoint op &ZPoint`, and `&ZPoint op &ZPoint`:
+        impl<'a, 'b> $trt<&'b ZPoint> for &'a ZPoint {
+            type Output = ZPoint;
+
+            fn $mth(self, other: &'b ZPoint) -> Self::Output {
                 assert_same_zdim!(self, other, $mth, $op);
                 ZPoint {
                     coords: &self.coords $op &other.coords,
@@ -403,29 +432,30 @@ macro_rules! binop (
             }
         }
 
-        impl $trt<&Vec<i32>> for &ZPoint {
+        impl<'a, 'b> $trt<&'a Vec<i32>> for &'b ZPoint {
             type Output = ZPoint;
-            fn $mth(self, other: &Vec<i32>) -> Self::Output {
+            fn $mth(self, other: &'a Vec<i32>) -> Self::Output {
                 self $op &ZPoint::from(other.clone())
             }
         }
 
-        impl $trt<&ZPoint> for &Vec<i32> {
+        impl<'a, 'b> $trt<&'a ZPoint> for &'b Vec<i32> {
             type Output = ZPoint;
-            fn $mth(self, other: &ZPoint) -> Self::Output {
+            fn $mth(self, other: &'a ZPoint) -> Self::Output {
                 &ZPoint::from(self.clone()) $op other
             }
         }
 
-        impl $trt<&Array1<i32>> for &ZPoint {
+        impl<'a, 'b> $trt<&'a Array1<i32>> for &'b ZPoint {
             type Output = ZPoint;
-            fn $mth(self, other: &Array1<i32>) -> Self::Output {
+            fn $mth(self, other: &'a Array1<i32>) -> Self::Output {
                 self $op &ZPoint::from(other.clone())
             }
         }
-        impl $trt<&ZPoint> for &Array1<i32> {
+
+        impl<'a, 'b> $trt<&'a ZPoint> for &'b Array1<i32> {
             type Output = ZPoint;
-            fn $mth(self, other: &ZPoint) -> Self::Output {
+            fn $mth(self, other: &'a ZPoint) -> Self::Output {
                 &ZPoint::from(self.clone()) $op other
             }
         }
@@ -646,7 +676,10 @@ pub struct ZRange {
 }
 
 impl fmt::Debug for ZRange {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         let pairs: Vec<String> = self
             .start
             .coords
@@ -660,7 +693,10 @@ impl fmt::Debug for ZRange {
 }
 
 impl fmt::Display for ZRange {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         fmt::Debug::fmt(self, f)
     }
 }
@@ -696,7 +732,10 @@ impl ZRange {
         ZRange::between(&ZPoint::zeros_like(&source), &source)
     }
 
-    pub fn between(start: impl ZPointSource, end: impl ZPointSource) -> Self {
+    pub fn between(
+        start: impl ZPointSource,
+        end: impl ZPointSource,
+    ) -> Self {
         let start = start.new_zpoint();
         let end = end.new_zpoint();
 
@@ -719,7 +758,10 @@ impl ZRange {
         }
     }
 
-    pub fn translate(&self, offset: impl ZPointSource) -> Self {
+    pub fn translate(
+        &self,
+        offset: impl ZPointSource,
+    ) -> Self {
         let offset = offset.new_zpoint();
         assert_same_zdim!(self.start, offset, translate, ..);
         ZRange::between(&self.start + &offset, &self.end + &offset)
@@ -742,6 +784,13 @@ impl ZRange {
 
     pub fn is_not_empty(&self) -> bool {
         self.size() != 0
+    }
+
+    pub fn normalize(&self) -> ZRange {
+        ZRange {
+            start: self.start.clone(),
+            end: self.start.clone() + self.shape(),
+        }
     }
 }
 
@@ -822,16 +871,22 @@ impl ZRange {
         self.start.coords.iter().zip(self.end.coords.iter())
     }
 
-    pub fn contains(&self, point: impl ZPointSource) -> bool {
+    pub fn contains(
+        &self,
+        point: impl ZPointSource,
+    ) -> bool {
         let point = point.new_zpoint();
         assert_same_zdim!(self.start, point, contains, ..);
 
         self.dim_iter()
             .zip(point.coords.iter())
-            .all(|((s, e), p)| s <= p && p <= e)
+            .all(|((s, e), p)| s < e && s <= p && p <= e)
     }
 
-    pub fn contains_range(&self, other: &ZRange) -> bool {
+    pub fn contains_range(
+        &self,
+        other: &ZRange,
+    ) -> bool {
         self.contains(&other.start) && self.contains(&other.end - 1)
     }
 }
@@ -854,6 +909,13 @@ macro_rules! assert_contains {
 #[cfg(test)]
 mod test_contains {
     use super::*;
+
+    #[test]
+    fn empty_range_contains_nothing() {
+        let empty = ZRange::from_shape(zpoint![0, 0, 0]);
+        assert!(!empty.contains(&empty.start));
+        assert!(!empty.contains_range(&empty));
+    }
 
     #[test]
     fn test_contains() {
@@ -893,7 +955,10 @@ impl ZRange {
     /// this can produce up to `2^ndim` children:
     ///  - `.split_trivial(pivot)` will yield all of these children including duplicate and empty children;
     ///  - `.split(pivot)` will yield only the non-empty distinct children.
-    pub fn split_trivial(&self, pivot: impl ZPointSource) -> Vec<ZRange> {
+    pub fn split_trivial(
+        &self,
+        pivot: impl ZPointSource,
+    ) -> Vec<ZRange> {
         let pivot = pivot.new_zpoint();
         assert_contains!(self, &pivot);
         assert!(pivot >= self.start);
@@ -915,7 +980,10 @@ impl ZRange {
         children
     }
 
-    pub fn split(&self, pivot: impl ZPointSource) -> Vec<ZRange> {
+    pub fn split(
+        &self,
+        pivot: impl ZPointSource,
+    ) -> Vec<ZRange> {
         self.split_trivial(pivot)
             .iter()
             .filter(|child| child.is_not_empty())
@@ -923,7 +991,10 @@ impl ZRange {
             .collect()
     }
 
-    pub fn join(&self, other: &ZRange) -> Option<ZRange> {
+    pub fn join(
+        &self,
+        other: &ZRange,
+    ) -> Option<ZRange> {
         // Two ZRanges can be joined iff they are adjacent along a single dimension.
         // In this case, the joined ZRange will be the smallest ZRange that contains both.
         // Otherwise, return None.
@@ -942,6 +1013,33 @@ impl ZRange {
         }
 
         Some(range)
+    }
+
+    /// Compute the intersection of two ZRanges.
+    ///
+    /// Panic if the ZRanges have different dimensions.
+    ///
+    /// If the ZRanges do not intersect, or their intersection is empty, return None.
+    ///
+    /// Otherwise, return the smallest ZRange that contains the intersection.
+    pub fn intersection(&self, other: &ZRange) -> Option<ZRange> {
+        assert_same_zdim!(self, other, intersection, ..);
+        if self.is_empty() || other.is_empty() {
+            return None;
+        }
+
+        let start = stack![Axis(0), self.start.coords, other.start.coords]
+            .map_axis(ndarray::Axis(0), |row| *row.iter().max().unwrap());
+
+        let end = stack![Axis(0), self.end.coords, other.end.coords]
+            .map_axis(ndarray::Axis(0), |row| *row.iter().min().unwrap());
+
+        let range = ZRange::between(start, end);
+        if range.is_not_empty() && self.contains_range(&range) && other.contains_range(&range) {
+            Some(range)
+        } else {
+            None
+        }
     }
 }
 
