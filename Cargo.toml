@@ -7,3 +7,7 @@ edition = "2021"
 
 [dependencies]
 ndarray = "0.15.6"
+
+[dev-dependencies]
+cargo-tarpaulin = "0.25.2"
+grcov = "0.8.18"
