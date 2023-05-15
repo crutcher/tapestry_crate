@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::ops;
 
-use ndarray::{array, Array1, Axis, stack};
+use ndarray::{array, Array1, Array2, Axis, stack};
 
 /// A trait for types that have a dimensionality.
 pub trait ZDim {
@@ -732,6 +732,49 @@ mod zpoint_tests {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct ZAffineMap {
+    matrix: Array2<i32>,
+    offset: Array1<i32>,
+}
+
+impl fmt::Debug for ZAffineMap {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        let s = format!("{}", self.matrix).replace("\n", "");
+        write!(f, "zmap[{} + {}]", s, self.offset)
+    }
+}
+
+impl fmt::Display for ZAffineMap {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+#[cfg(test)]
+mod test_affine_map {
+    use ndarray::array;
+
+    use crate::zspace::ZAffineMap;
+
+    #[test]
+    fn test_display() {
+        let amap = ZAffineMap {
+            matrix: array![[1, 0], [0, 1]],
+            offset: array![2, 3],
+        };
+
+        assert_eq!(format!("{}", amap), "zmap[[[1, 0], [0, 1]] + [2, 3]]");
+    }
+
+}
+
 /// A ZRange is a rectangular prism in ZSpace, defined over `[start, end)`
 #[derive(Clone, PartialEq, Eq)]
 pub struct ZRange {
@@ -1167,6 +1210,30 @@ impl ZRange {
         result
     }
 
+    /// Compute the super-range of a set of ranges.
+    ///
+    /// Each range must have the same dimensionality.
+    pub fn super_range(ranges: &Vec<ZRange>) -> ZRange {
+        assert!(!ranges.is_empty());
+        let ranges: Vec<ZRange> = ranges.iter().map(|r| r.normalize()).collect();
+
+        let mut start = ranges[0].start.clone();
+        let mut end = ranges[0].end.clone();
+        let ndim = start.ndim();
+            for range in ranges.iter() {
+            assert_same_zdim!(range, &start, super_range, "ranges");
+            for dim in 0..ndim {
+                start.coords[dim] = std::cmp::min(start.coords[dim], range.start.coords[dim]);
+                end.coords[dim] = std::cmp::max(end.coords[dim], range.end.coords[dim]);
+            }
+        }
+        ZRange::between(&start, &end)
+    }
+
+    /// Join two ZRanges.
+    ///
+    /// The two ZRanges must entirely share a boundary plane; they must be adjacent, and
+    /// they must have the same size.
     pub fn join(
         &self,
         other: &ZRange,
@@ -1231,6 +1298,18 @@ mod test_split {
     use super::*;
 
     #[test]
+    fn test_super_range() {
+        assert_eq!(
+            ZRange::super_range(&vec![
+                zrange![0;1, 0;1],
+                zrange![3;4, 5;6],
+            ]),
+            zrange![0;4, 0;6],
+        );
+
+    }
+
+    #[test]
     fn test_intersection() {
         let base = zrange![0;4, 0;4];
         let sub = zrange![2;3, 3;4];
@@ -1293,6 +1372,7 @@ mod test_split {
     #[test]
     fn test_split_trivial() {
         let range = ZRange::between(&zpoint![1, 2, 3], &zpoint![4, 5, 6]);
+
         assert_eq!(
             range.split_trivial(&zpoint![2, 3, 4]),
             vec![
@@ -1305,6 +1385,11 @@ mod test_split {
                 ZRange::between(&zpoint![2, 3, 3], &zpoint![4, 5, 4]),
                 ZRange::between(&zpoint![2, 3, 4], &zpoint![4, 5, 6]),
             ]
+        );
+
+        assert_eq!(
+            &ZRange::super_range(&range.split_trivial(&zpoint![2, 3, 4])),
+            &range,
         );
     }
 
@@ -1319,6 +1404,11 @@ mod test_split {
                 ZRange::between(&zpoint![2, 2], &zpoint![4, 5]),
                 ZRange::between(&zpoint![2, 5], &zpoint![4, 5]),
             ]
+        );
+
+        assert_eq!(
+            &ZRange::super_range(&range.split_trivial(&zpoint![2, 5])),
+            &range,
         );
 
         assert_eq!(
